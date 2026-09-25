@@ -1,24 +1,44 @@
-import telebot
-from yt_dlp import YoutubeDL
 import os
-TOKEN = "8856609454:AAGObMKBRles64u5FBVwkgldnVVUyo_Bc90"
+import threading
+from flask import Flask
+import telebot
+import yt_dlp
+
+TOKEN = os.environ.get("8856609454:AAGObMKBRles64u5FBVwkgldnVVUyo_Bc90")
 bot = telebot.TeleBot(TOKEN)
+
+app = Flask(__name__)
+@app.route('/')
+def home():
+    return "Bot Live!"
+
+def run_flask():
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host='0.0.0.0', port=port)
+
 @bot.message_handler(commands=['start'])
-def start(m):
-    bot.send_message(m.chat.id, "Salom! Link yubor 🎧")
+def start(message):
+    bot.reply_to(message, "Salom xo'jayin! TikTok link tashlang, yuklab beraman!")
+
 @bot.message_handler(func=lambda m: True)
-def yukla(m):
-    if 'http' not in m.text:
+def download(message):
+    url = message.text
+    if "tiktok.com" not in url and "vt.tiktok.com" not in url:
+        bot.reply_to(message, "Iltimos TikTok link tashlang!")
         return
-    bot.send_message(m.chat.id, "Yuklayapman...")
+
+    bot.reply_to(message, "Yuklanmoqda...")
     try:
-        ydl_opts = {'format': 'best', 'outtmpl': '%(title)s.%(ext)s', 'quiet': True}
-        with YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(m.text, download=True)
-            file = ydl.prepare_filename(info)
-            with open(file, 'rb') as f:
-                bot.send_video(m.chat.id, f, caption="@vibetjbot")
-            os.remove(file)
+        ydl_opts = {'format': 'mp4', 'outtmpl': 'video.mp4', 'quiet': True}
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            ydl.download([url])
+
+        with open('video.mp4', 'rb') as v:
+            bot.send_video(message.chat.id, v)
+
+        os.remove('video.mp4')
     except Exception as e:
-        bot.send_message(m.chat.id, f"Xato: {e}")
-bot.infinity_polling()
+        bot.reply_to(message, f"Xato: {e}")
+
+threading.Thread(target=run_flask).start()
+bot.polling(none_stop=True)
