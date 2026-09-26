@@ -1,44 +1,69 @@
 import os
-import threading
-from flask import Flask
-import telebot
+import logging
 import yt_dlp
+from telegram import Update
+from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, filters
 
 TOKEN = os.environ.get("BOT_TOKEN")
-bot = telebot.TeleBot(TOKEN)
 
-app = Flask(__name__)
-@app.route('/')
-def home():
-    return "Bot Live!"
+logging.basicConfig(level=logging.INFO)
 
-def run_flask():
-    port = int(os.environ.get("PORT", 10000))
-    app.run(host='0.0.0.0', port=port)
-
-@bot.message_handler(commands=['start'])
-def start(message):
-    bot.reply_to(message, "Salom xo'jayin! TikTok link tashlang, yuklab beraman!")
-
-@bot.message_handler(func=lambda m: True)
-def download(message):
-    url = message.text
-    if "tiktok.com" not in url and "vt.tiktok.com" not in url:
-        bot.reply_to(message, "Iltimos TikTok link tashlang!")
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = update.message.text
+    if not text:
         return
 
-    bot.reply_to(message, "Yuklanmoqda...")
+    # 1. TIKTOK LINK BO'LSA -> VIDEO YUKLAYDI
+    if "tiktok.com" in text or "vt.tiktok" in text:
+        await update.message.reply_text("⏳ TikTok yuklanmoqda...")
+        try:
+            ydl_opts = {'outtmpl': 'video.mp4', 'format': 'mp4', 'quiet': True}
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                ydl.download([text])
+            await update.message.reply_video(video=open('video.mp4', 'rb'))
+            os.remove('video.mp4')
+        except Exception as e:
+            await update.message.reply_text(f"Xato: {e}")
+        return
+
+    # 2. LINK BO'LMASA -> MUSIQA DEB QIDIRADI (YouTube dan)
+    await update.message.reply_text(f"🎵 '{text}' qidirilmoqda...")
     try:
-        ydl_opts = {'format': 'mp4', 'outtmpl': 'video.mp4', 'quiet': True}
+        # YouTube dan 1 ta natija qidirish
+        ydl_opts = {
+            'format': 'bestaudio/best',
+            'outtmpl': 'music.%(ext)s',
+            'quiet': True,
+            'postprocessors': [{
+                'key': 'FFmpegExtractAudio',
+                'preferredcodec': 'mp3',
+                'preferredquality': '192',
+            }],
+        }
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            ydl.download([url])
+            # ytsearch1: eng mos 1 ta qo'shiqni oladi
+            info = ydl.extract_info(f"ytsearch1:{text}", download=True)
+            file_name = ydl.prepare_filename(info['entries'][0]).replace('.webm','.mp3').replace('.m4a','.mp3')
+            # fayl nomini topish
+            if not os.path.exists(file_name):
+                file_name = "music.mp3"
+                # papkadagi mp3 ni topish
+                for f in os.listdir('.'):
+                    if f.startswith('music') and f.endswith('.mp3'):
+                        file_name = f
+                        break
 
-        with open('video.mp4', 'rb') as v:
-            bot.send_video(message.chat.id, v)
-
-        os.remove('video.mp4')
+        await update.message.reply_audio(audio=open(file_name, 'rb'), title=text)
+        os.remove(file_name)
     except Exception as e:
-        bot.reply_to(message, f"Xato: {e}")
+        await update.message.reply_text(f"Topilmadi: {e}")
 
-threading.Thread(target=run_flask).start()
-bot.polling(none_stop=True)
+async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("🎤 Ovoz qabul qilindi, hozircha matn bilan qo'shiq nomini yozing, tez orada ovoz bilan qidirishni ham qo'shamiz!")
+
+if __name__ == '__main__':
+    app = ApplicationBuilder().token(TOKEN).build()
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    app.add_handler(MessageHandler(filters.VOICE | filters.AUDIO, handle_voice))
+    print("Bot ishga tushdi...")
+    app.run_polling()
