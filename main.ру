@@ -4,7 +4,7 @@ from flask import Flask
 import telebot
 import yt_dlp
 
-TOKEN = os.environ.get("8856609454:AAGObMKBRles64u5FBVwkgldnVVUyo_Bc90")
+TOKEN = os.environ.get("8856609454:AAG1YKrRGI8R8AEDPXb8153G8t_8wH6CqJo")
 bot = telebot.TeleBot(TOKEN)
 
 app = Flask(__name__)
