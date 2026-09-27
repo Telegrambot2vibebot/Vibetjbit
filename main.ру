@@ -1,47 +1,49 @@
 import os
+import telebot
 import yt_dlp
-from telegram import Update
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 
 TOKEN = os.environ.get("BOT_TOKEN")
+bot = telebot.TeleBot(TOKEN)
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Salom! TikTok link yoki qo'shiq nomini yuboring 🎵")
+@bot.message_handler(commands=['start'])
+def start(message):
+    bot.reply_to(message, "Salom xo'jayin! TikTok link yoki musiqa nomini yuboring 🎵")
 
-async def download(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = update.message.text
+@bot.message_handler(func=lambda m: True)
+def handle(message):
+    text = message.text
     if "tiktok.com" in text or "vt.tiktok" in text:
-        await update.message.reply_text("⏳ Yuklanmoqda...")
+        bot.reply_to(message, "⏳ Yuklanmoqda...")
         try:
-            opts = {'outtmpl': 'video.mp4', 'format': 'mp4', 'quiet': True}
-            with yt_dlp.YoutubeDL(opts) as ydl:
+            ydl_opts = {'outtmpl': 'video.mp4', 'format': 'mp4', 'quiet': True}
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 ydl.download([text])
-            await update.message.reply_video(video=open('video.mp4', 'rb'))
+            with open('video.mp4', 'rb') as f:
+                bot.send_video(message.chat.id, f)
             os.remove('video.mp4')
         except Exception as e:
-            await update.message.reply_text(f"Xato: {e}")
+            bot.reply_to(message, f"Xato: {e}")
     else:
-        await update.message.reply_text(f"🎵 '{text}' qidirilmoqda...")
+        bot.reply_to(message, f"🎵 '{text}' qidirilmoqda...")
         try:
-            opts = {
+            ydl_opts = {
                 'format': 'bestaudio/best',
                 'outtmpl': 'music.%(ext)s',
                 'quiet': True,
                 'postprocessors': [{'key': 'FFmpegExtractAudio','preferredcodec': 'mp3'}],
+                'postprocessor_args': ['-ar', '44100']
             }
-            with yt_dlp.YoutubeDL(opts) as ydl:
-                info = ydl.extract_info(f"ytsearch1:{text}", download=True)
-                # faylni topish
-                for f in os.listdir('.'):
-                    if f.startswith('music') and f.endswith('.mp3'):
-                        await update.message.reply_audio(audio=open(f, 'rb'), title=text)
-                        os.remove(f)
-                        break
-        except Exception as e:
-            await update.message.reply_text(f"Topilmadi: {e}")
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                ydl.download([f"ytsearch1:{text}"])
 
-if __name__ == '__main__':
-    app = Application.builder().token(TOKEN).build()
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, download))
-    app.run_polling()
+            for file in os.listdir('.'):
+                if file.startswith("music") and file.endswith(".mp3"):
+                    with open(file, 'rb') as f:
+                        bot.send_audio(message.chat.id, f, title=text)
+                    os.remove(file)
+                    break
+        except Exception as e:
+            bot.reply_to(message, f"Topilmadi: {e}")
+
+print("Bot ishga tushdi...")
+bot.infinity_polling()
